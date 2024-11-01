@@ -2,7 +2,7 @@ local computer = require("computer")
 
 local mqtt = {}
 
-local safeRead = function (conn, n)
+local safeRead = function(conn, n)
     local success, result, err = pcall(conn.read, conn, n)
     if success then
         return result, err
@@ -11,7 +11,7 @@ local safeRead = function (conn, n)
     return nil, result
 end
 
-local readVarint = function (conn, first_byte)
+local readVarint = function(conn, first_byte)
     local b, data, err
     if first_byte == nil then
         data, err = safeRead(conn, 1)
@@ -44,7 +44,7 @@ local readVarint = function (conn, first_byte)
     return n + (b << s), nil
 end
 
-local encodeVarint = function (n)
+local encodeVarint = function(n)
     if n > 268435455 then
         return nil, "number too large"
     end
@@ -60,7 +60,7 @@ end
 
 local MqttClient = {}
 
-function mqtt.open (address, port)
+function mqtt.open(address, port)
     local conn, err = require("internet").open(address, port)
     if conn == nil then
         return nil, err
@@ -69,7 +69,7 @@ function mqtt.open (address, port)
     return MqttClient:new(conn), nil
 end
 
-function MqttClient:new (conn)
+function MqttClient:new(conn)
     local c = c or {}
     setmetatable(c, self)
     self.__index = self
@@ -85,7 +85,7 @@ function MqttClient:new (conn)
     return c
 end
 
-function MqttClient:handle ()
+function MqttClient:handle()
     if not (self.is_connecting or self.is_connected) then
         return "no connection"
     end
@@ -142,26 +142,26 @@ function MqttClient:handle ()
 
         self.is_connecting = false
         self.is_connected = true
-        return "connack"
+        return nil, "connack"
     elseif ptype & 0xF0 == 0x40 then -- PUBACK
         -- TODO
-        return "puback"
+        return nil, "puback"
     elseif ptype & 0xF0 == 0x90 then -- SUBACK
         -- TODO
-        return "suback"
+        return nil, "suback"
     elseif ptype & 0xF0 == 0xD0 then -- PINGRESP
         -- TODO
-        return "pingresp"
+        return nil, "pingresp"
     elseif ptype & 0xF0 == 0x30 then -- PUBLISH
         local topic, _, next = string.unpack("> s2 B", data)
         local message = string.sub(data, next)
 
         computer.pushSignal("mqtt_message", topic, message)
-        return "publish"
+        return nil, "publish"
     elseif ptype & 0xF0 == 0xE0 then -- DISCONNECT
         if ptype ~= 0xE0 then
             self:disconnect(0x81)
-            return "malformed packet"
+            return "malformed packet", nil
         end
 
         self.is_connecting = false
@@ -174,24 +174,28 @@ function MqttClient:handle ()
             end
         end
 
-        return "disconnect"
+        return "disconnect", "disconnect"
     end
 
-    return nil
+    return nil, nil
 end
 
 function MqttClient:handleAll()
-    local result = nil
+    local err, result
 
     while true do
-        result = self:handle()
+        err, result = self:handle()
+        if err ~= nil then
+            return err
+        end
         if not result then
             break
         end
     end
+    return nil
 end
 
-function MqttClient:connect (username, password)
+function MqttClient:connect(username, password)
     if self.is_connecting or self.is_connected then
         return "already connected"
     end
@@ -230,7 +234,7 @@ function MqttClient:connect (username, password)
     return nil
 end
 
-function MqttClient:publish (topic, payload)
+function MqttClient:publish(topic, payload)
     if not (self.is_connecting or self.is_connected) then
         return "no connection"
     end
@@ -259,7 +263,7 @@ function MqttClient:publish (topic, payload)
     return nil
 end
 
-function MqttClient:subscribe (...)
+function MqttClient:subscribe(...)
     if not (self.is_connecting or self.is_connected) then
         return "no connection"
     end
@@ -292,7 +296,7 @@ function MqttClient:subscribe (...)
     return nil
 end
 
-function MqttClient:disconnect (reason)
+function MqttClient:disconnect(reason)
     if not (self.is_connecting or self.is_connected) then
         return "no connection"
     end
